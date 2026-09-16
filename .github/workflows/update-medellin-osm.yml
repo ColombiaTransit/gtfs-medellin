@@ -1,0 +1,44 @@
+name: Update Bogota OSM Extract
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "0 3 * * 0"   # weekly
+
+permissions:
+  contents: write
+
+jobs:
+  build-bogota-extract:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Osmium
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y osmium-tool
+
+      - name: Download Colombia OSM
+        run: |
+          wget \
+            -O colombia.osm.pbf \
+            https://download.geofabrik.de/south-america/colombia-latest.osm.pbf
+
+      - name: Extract Medellin
+        run: |
+          osmium extract \
+            --bbox=-74.2183,4.45,-74.0108,4.90 \
+            colombia.osm.pbf \
+            -o medellin.osm.pbf \
+            --overwrite
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: osm-latest
+          name: Medellin OSM Extract
+          files: medellin.osm.pbf
