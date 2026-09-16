@@ -1,4 +1,4 @@
-name: Update Bogota OSM Extract
+name: Update Medellin OSM Extract
 
 on:
   workflow_dispatch:
