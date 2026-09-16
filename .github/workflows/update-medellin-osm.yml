@@ -31,7 +31,7 @@ jobs:
       - name: Extract Medellin
         run: |
           osmium extract \
-            --bbox=-74.2183,4.45,-74.0108,4.90 \
+            --bbox=-75.71,6.09,-75.47,6.60 \
             colombia.osm.pbf \
             -o medellin.osm.pbf \
             --overwrite
