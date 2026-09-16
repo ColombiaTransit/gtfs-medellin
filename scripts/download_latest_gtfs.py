@@ -87,7 +87,7 @@ def main():
     print("Optimization complete")
 
     with open("latest_gtfs_key.txt", "w") as fh:
-        fh.write(latest["key"])
+        fh.write(datetime.utcnow().strftime("%Y-%m-%d"))
 
     print("Done")
 
