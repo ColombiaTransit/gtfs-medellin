@@ -1,0 +1,170 @@
+name: Validate Latest GTFS
+
+on:
+  workflow_dispatch:
+
+  schedule:
+    - cron: "0 5 * * *"
+env:
+  GTFS_VALIDATOR_VERSION: latest       # or pin e.g. "v5.0.1"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Download latest GTFS
+        run: |
+          python scripts/download_latest_gtfs.py
+
+      - name: Extract GTFS
+        run: |
+          mkdir gtfs_work
+          unzip -q latest_gtfs.zip -d gtfs_work
+
+      - name: Download Bogota OSM extract
+        run: |
+          curl -L \
+            -o bogota.osm.pbf \
+            https://github.com/${{ github.repository }}/releases/download/osm-latest/bogota.osm.pbf
+      
+          ls -lh bogota.osm.pbf
+
+          file bogota.osm.pbf
+      
+      - name: Pull pfaedle
+        run: |
+          docker pull ghcr.io/ad-freiburg/pfaedle:latest
+
+      - name: Prepare directories
+        run: |
+          mkdir osm gtfs gtfs-out
+          mv bogota.osm.pbf osm/
+          cp latest_gtfs.zip gtfs/
+          
+      - name: Run Pfaedle
+        run: |
+          docker run --rm \
+            --user $(id -u):$(id -g) \
+            -v "${{ github.workspace }}/osm:/osm" \
+            -v "${{ github.workspace }}/gtfs:/gtfs" \
+            -v "${{ github.workspace }}/gtfs-out:/gtfs-out" \
+            ghcr.io/ad-freiburg/pfaedle:latest \
+            -D \
+            -x /osm/bogota.osm.pbf \
+            /gtfs/latest_gtfs.zip
+
+      - name: Remove shape_dist_traveled from stop_times.txt
+        run: |
+          python3 - <<'PY'
+          import pandas as pd
+      
+          file = "gtfs-out/stop_times.txt"
+      
+          df = pd.read_csv(
+              file,
+              dtype=str,
+              low_memory=False
+          )
+          
+          if "shape_dist_traveled" in df.columns:
+              df.drop(columns=["shape_dist_traveled"], inplace=True)
+              print("Removed shape_dist_traveled column")
+      
+          df.to_csv(file, index=False)
+          PY
+
+      - name: Deduplicate shape points
+        run: |
+          python scripts/deduplicate_shapes.py
+          
+      - name: Repack GTFS
+        run: |
+          cd gtfs-out
+          zip -qr ../latest_gtfs_pfaedle.zip .      
+      
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Resolve gtfs-validator-cli download URL
+        id: resolve_validator
+        run: |
+          if [ "${GTFS_VALIDATOR_VERSION}" = "latest" ]; then
+            URL=$(curl -sSL https://api.github.com/repos/MobilityData/gtfs-validator/releases/latest \
+              | python3 -c "import sys,json; d=json.load(sys.stdin); print(next(a['browser_download_url'] for a in d['assets'] if a['name'].endswith('-cli.jar')))")
+          else
+            URL="https://github.com/MobilityData/gtfs-validator/releases/download/${GTFS_VALIDATOR_VERSION}/gtfs-validator-cli.jar"
+          fi
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Download gtfs-validator-cli.jar
+        run: curl -L -o gtfs-validator-cli.jar "${{ steps.resolve_validator.outputs.url }}"
+
+      - name: Run Validator
+        run: |
+          mkdir -p validation-report
+
+          java -Xmx4G -jar gtfs-validator-cli.jar \
+            -i latest_gtfs_pfaedle.zip \
+            -o validation-report
+
+      - name: Generate tags
+        run: |
+          VERSION_TAG=$(cat latest_gtfs_key.txt | sed 's/.zip$//')
+      
+          echo "VERSION_TAG=$VERSION_TAG" >> $GITHUB_ENV
+          echo "LATEST_TAG=latest" >> $GITHUB_ENV
+
+      - name: Create versioned release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release view "$VERSION_TAG" >/dev/null 2>&1 || \
+          gh release create "$VERSION_TAG" \
+            --title "$VERSION_TAG" \
+            --notes "Automated GTFS build and validation"
+
+      - name: Refresh latest release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete latest -y --cleanup-tag || true
+      
+          gh release create latest \
+            --title "Latest GTFS" \
+            --notes "Latest generated GTFS feed"
+
+      - name: Upload versioned assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "$VERSION_TAG" \
+            latest_gtfs_pfaedle.zip \
+            validation-report/report.html \
+            validation-report/report.json \
+            --clobber
+
+      - name: Upload latest assets
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload latest \
+            latest_gtfs_pfaedle.zip \
+            validation-report/report.html \
+            validation-report/report.json \
+            --clobber
