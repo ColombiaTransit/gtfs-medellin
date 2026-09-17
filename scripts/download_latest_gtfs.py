@@ -9,10 +9,30 @@ import tempfile
 import shutil
 import math
 from datetime import datetime
-
 from pathlib import Path
+
 GTFS_URL = "https://www.arcgis.com/sharing/rest/content/items/929fbd2dbfbf493ab44935577e8fbff6/data"
 OUTPUT_FILE = "gtfs-medellin.zip"
+
+def flatten_gtfs_directory(gtfs_dir):
+    """
+    If the extracted ZIP contains a single top-level folder,
+    move its contents into gtfs_dir.
+    """
+    items = list(Path(gtfs_dir).iterdir())
+
+    # Only one directory and no GTFS files at root
+    if len(items) == 1 and items[0].is_dir():
+        nested_dir = items[0]
+
+        print(f"Found nested GTFS directory: {nested_dir}")
+
+        for item in nested_dir.iterdir():
+            shutil.move(str(item), str(Path(gtfs_dir) / item.name))
+
+        nested_dir.rmdir()
+
+        print("Flattened GTFS directory structure")
 
 def sort_stop_times(gtfs_zip):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -83,6 +103,26 @@ def main():
     size_mb = Path(OUTPUT_FILE).stat().st_size / 1024 / 1024
     print(f"Saved {OUTPUT_FILE} ({size_mb:.2f} MB)")
 
+    # Flatten nested GTFS directory if present
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        with zipfile.ZipFile(OUTPUT_FILE, "r") as zf:
+            zf.extractall(tmpdir)
+
+        flatten_gtfs_directory(tmpdir)
+
+        rebuilt_zip = tmpdir / "rebuilt.zip"
+
+        with zipfile.ZipFile(rebuilt_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+            for file in tmpdir.rglob("*"):
+                if file.is_file() and file != rebuilt_zip:
+                    zf.write(file, file.relative_to(tmpdir))
+
+        shutil.move(str(rebuilt_zip), OUTPUT_FILE)
+
+    print("GTFS directory structure normalized")
+    
     print("Optimizing GTFS feed...")
     sort_stop_times(OUTPUT_FILE)
     print("Optimization complete")
