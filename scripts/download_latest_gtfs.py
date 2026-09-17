@@ -22,12 +22,12 @@ def generate_calendar_dates():
 
     current_year = datetime.now().year
 
-    # Generate from last year through 5 years ahead
-    start_year = current_year - 1
-    end_year = current_year + 5
+    # Generate from current year through 1 years ahead
+    start_year = current_year
+    end_year = current_year + 1
 
     co_holidays = holidays.CO(
-        years=range(start_year, end_year + 1)
+        years=range(start_year, end_year)
     )
 
     rows = []
