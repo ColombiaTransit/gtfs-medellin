@@ -1,31 +1,51 @@
-# GTFS Bogotá
+# GTFS Medellín
 
-Automated pipeline for generating, improving and validating the Bogotá GTFS feed.
+Automated pipeline for downloading, validating, improving, and publishing GTFS data for the Medellín metropolitan area.
 
-This project downloads the latest official Bogotá GTFS feed, rebuilds route geometries using OpenStreetMap and Pfaedle, cleans problematic shape metadata, and validates the resulting feed using MobilityData GTFS Validator.
+This project downloads the official GTFS feed published by Metro de Medellín, applies automated improvements, validates the feed using MobilityData GTFS Validator, and publishes the resulting feed as GitHub Releases.
 
-The entire process runs automatically through GitHub Actions.
+## Features
 
----
+### Automated Download
 
-# Objectives
+The pipeline automatically downloads the latest GTFS feed from Metro de Medellín.
 
-This project aims to:
+### Feed Normalization
 
-- Download the newest official Bogotá GTFS feed automatically
-- Keep OpenStreetMap data up-to-date
-- Improve route geometries through map matching
-- Reduce GTFS validation warnings and errors
-- Provide a reproducible GTFS processing pipeline
-- Maintain a fully automated workflow
+Some releases contain GTFS files inside a nested directory. The pipeline automatically:
 
----
+- Extracts the ZIP file
+- Flattens nested folders
+- Rebuilds the GTFS archive
 
-# Data Sources
+This ensures all GTFS files are stored at the root of the archive as required by downstream tools.
 
-## GTFS Feed
+### Calendar Maintenance
 
-Official GTFS feed:
+The pipeline automatically updates:
 
-```text
-https://storage.googleapis.com/gtfs-estaticos/
+#### calendar.txt
+
+Service dates are refreshed to cover:
+
+- Current year
+- Following year
+
+#### calendar_dates.txt
+
+Holiday exceptions are generated automatically using the Python `holidays` library for Colombia.
+
+This includes:
+
+- National holidays
+- Semana Santa
+- Ley Emiliani Monday holidays
+- Fixed-date holidays
+
+The generated exceptions automatically:
+
+- Remove weekday service (`Laboral`) on holidays
+- Remove Saturday service (`Sabado`) when a holiday occurs on Saturday
+- Add holiday service (`Domingo-Festivo`)
+
+No manual holiday maintenance is required.
