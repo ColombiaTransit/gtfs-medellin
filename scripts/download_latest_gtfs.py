@@ -14,6 +14,48 @@ from pathlib import Path
 GTFS_URL = "https://www.arcgis.com/sharing/rest/content/items/929fbd2dbfbf493ab44935577e8fbff6/data"
 OUTPUT_FILE = "gtfs-medellin.zip"
 
+def refresh_calendar(gtfs_zip):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        with zipfile.ZipFile(gtfs_zip, "r") as zf:
+            zf.extractall(tmpdir)
+
+        calendar_file = tmpdir / "calendar.txt"
+
+        if not calendar_file.exists():
+            print("calendar.txt not found")
+            return
+
+        print("Refreshing calendar.txt...")
+
+        df = pd.read_csv(
+            calendar_file,
+            dtype=str,
+            keep_default_na=False
+        )
+
+        today = datetime.today()
+
+        df["start_date"] = f"{today.year}0101"
+        df["end_date"] = f"{today.year + 1}1231"
+
+        df.to_csv(calendar_file, index=False)
+
+        output_zip = str(gtfs_zip).replace(".zip", "_calendar.zip")
+
+        with zipfile.ZipFile(output_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+            for file in tmpdir.rglob("*"):
+                if file.is_file():
+                    zf.write(file, file.relative_to(tmpdir))
+
+        shutil.move(output_zip, gtfs_zip)
+
+        print(
+            f"calendar.txt updated to "
+            f"{today.year}0101 - {today.year + 1}1231"
+        )
+
 def flatten_gtfs_directory(gtfs_dir):
     """
     If the extracted ZIP contains a single top-level folder,
@@ -124,6 +166,7 @@ def main():
     print("GTFS directory structure normalized")
     
     print("Optimizing GTFS feed...")
+    refresh_calendar(OUTPUT_FILE)
     sort_stop_times(OUTPUT_FILE)
     print("Optimization complete")
 
