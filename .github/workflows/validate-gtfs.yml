@@ -32,17 +32,17 @@ jobs:
       - name: Extract GTFS
         run: |
           mkdir gtfs_work
-          unzip -q latest_gtfs.zip -d gtfs_work
+          unzip -q gtfs-medellin.zip -d gtfs_work
 
       - name: Download Bogota OSM extract
         run: |
           curl -L \
-            -o bogota.osm.pbf \
-            https://github.com/${{ github.repository }}/releases/download/osm-latest/bogota.osm.pbf
+            -o medellin.osm.pbf \
+            https://github.com/${{ github.repository }}/releases/download/osm-latest/medellin.osm.pbf
       
-          ls -lh bogota.osm.pbf
+          ls -lh medellin.osm.pbf
 
-          file bogota.osm.pbf
+          file medellin.osm.pbf
       
       - name: Pull pfaedle
         run: |
@@ -51,8 +51,8 @@ jobs:
       - name: Prepare directories
         run: |
           mkdir osm gtfs gtfs-out
-          mv bogota.osm.pbf osm/
-          cp latest_gtfs.zip gtfs/
+          mv medellin.osm.pbf osm/
+          cp gtfs-medellin.zip gtfs/
           
       - name: Run Pfaedle
         run: |
@@ -63,8 +63,8 @@ jobs:
             -v "${{ github.workspace }}/gtfs-out:/gtfs-out" \
             ghcr.io/ad-freiburg/pfaedle:latest \
             -D \
-            -x /osm/bogota.osm.pbf \
-            /gtfs/latest_gtfs.zip
+            -x /osm/medellin.osm.pbf \
+            /gtfs/gtfs-medellin.zip
 
       - name: Remove shape_dist_traveled from stop_times.txt
         run: |
