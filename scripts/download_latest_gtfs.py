@@ -8,11 +8,86 @@ import zipfile
 import tempfile
 import shutil
 import math
+import holidays
 from datetime import datetime
 from pathlib import Path
 
 GTFS_URL = "https://www.arcgis.com/sharing/rest/content/items/929fbd2dbfbf493ab44935577e8fbff6/data"
 OUTPUT_FILE = "gtfs-medellin.zip"
+
+def generate_calendar_dates():
+    """
+    Generate GTFS calendar_dates.txt for Colombia.
+    """
+
+    current_year = datetime.now().year
+
+    # Generate from last year through 5 years ahead
+    start_year = current_year - 1
+    end_year = current_year + 5
+
+    co_holidays = holidays.CO(
+        years=range(start_year, end_year + 1)
+    )
+
+    rows = []
+
+    for holiday_date in sorted(co_holidays.keys()):
+        date_str = holiday_date.strftime("%Y%m%d")
+
+        # Holiday service operates
+        rows.append({
+            "service_id": "Domingo-Festivo",
+            "date": date_str,
+            "exception_type": 1
+        })
+
+        weekday = holiday_date.weekday()
+
+        if weekday < 5:
+            rows.append({
+                "service_id": "Laboral",
+                "date": date_str,
+                "exception_type": 2
+            })
+        elif weekday == 5:
+            rows.append({
+                "service_id": "Sabado",
+                "date": date_str,
+                "exception_type": 2
+            })
+
+    return pd.DataFrame(rows)
+
+def add_calendar_dates(gtfs_zip):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        with zipfile.ZipFile(gtfs_zip, "r") as zf:
+            zf.extractall(tmpdir)
+
+        df = generate_calendar_dates()
+
+        df.to_csv(
+            tmpdir / "calendar_dates.txt",
+            index=False
+        )
+
+        output_zip = str(gtfs_zip).replace(".zip", "_calendar.zip")
+
+        with zipfile.ZipFile(output_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+            for file in tmpdir.rglob("*"):
+                if file.is_file():
+                    zf.write(
+                        file,
+                        file.relative_to(tmpdir)
+                    )
+
+        shutil.move(output_zip, gtfs_zip)
+
+        print(
+            f"Generated calendar_dates.txt with {len(df)} exceptions"
+        )
 
 def refresh_calendar(gtfs_zip):
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -166,6 +241,8 @@ def main():
     print("GTFS directory structure normalized")
     
     print("Optimizing GTFS feed...")
+    print("Adding holiday calendar...")
+    add_calendar_dates(OUTPUT_FILE)
     refresh_calendar(OUTPUT_FILE)
     sort_stop_times(OUTPUT_FILE)
     print("Optimization complete")
