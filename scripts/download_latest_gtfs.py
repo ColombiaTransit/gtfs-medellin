@@ -15,6 +15,48 @@ from pathlib import Path
 GTFS_URL = "https://www.arcgis.com/sharing/rest/content/items/929fbd2dbfbf493ab44935577e8fbff6/data"
 OUTPUT_FILE = "gtfs-medellin.zip"
 
+def generate_feed_info(gtfs_zip):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmpdir = Path(tmpdir)
+
+        with zipfile.ZipFile(gtfs_zip, "r") as zf:
+            zf.extractall(tmpdir)
+
+        today = datetime.today()
+
+        feed_info = pd.DataFrame([
+            {
+                "feed_publisher_name": "Metro de Medellin",
+                "feed_publisher_url": "https://www.metrodemedellin.gov.co",
+                "feed_lang": "es",
+                "feed_start_date": f"{today.year}0101",
+                "feed_end_date": f"{today.year + 1}1231",
+                "feed_version": today.strftime("%Y-%m-%d")
+            }
+        ])
+
+        feed_info.to_csv(
+            tmpdir / "feed_info.txt",
+            index=False
+        )
+
+        output_zip = str(gtfs_zip).replace(
+            ".zip",
+            "_feedinfo.zip"
+        )
+
+        with zipfile.ZipFile(output_zip, "w", zipfile.ZIP_DEFLATED) as zf:
+            for file in tmpdir.rglob("*"):
+                if file.is_file():
+                    zf.write(
+                        file,
+                        file.relative_to(tmpdir)
+                    )
+
+        shutil.move(output_zip, gtfs_zip)
+
+        print("feed_info.txt generated")
+
 def generate_calendar_dates():
     """
     Generate GTFS calendar_dates.txt for Colombia.
@@ -244,6 +286,7 @@ def main():
     print("Adding holiday calendar...")
     add_calendar_dates(OUTPUT_FILE)
     refresh_calendar(OUTPUT_FILE)
+    generate_feed_info(OUTPUT_FILE)
     sort_stop_times(OUTPUT_FILE)
     print("Optimization complete")
 
